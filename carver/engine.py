@@ -20,6 +20,11 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 from .signatures import SIGNATURE_BY_KEY, OOXML_SUBTYPES
+# Phase 2 post-processing passes. Each is implemented by a separate task and is
+# a no-op until then (see carver/validation.py, dedup.py, containment.py).
+from .validation import assign_confidence
+from .dedup import deduplicate
+from .containment import resolve_containment
 
 
 @dataclass
@@ -28,6 +33,12 @@ class Candidate:
     start: int               # byte offset of the header in the image
     end: int                 # exclusive byte offset where the file ends
     note: str = ""           # optional remark (e.g. truncated)
+
+    # ---- Phase 2 fields, filled in by the post-processing passes ----
+    confidence: str = "unknown"           # Task 1: "high" / "medium" / "low"
+    sha256: str = ""                      # Task 2: hex content hash
+    duplicate_of: Optional[int] = None    # Task 2: start offset of the first copy
+    embedded_in: Optional[int] = None     # Task 3: start offset of the container
 
     @property
     def size(self) -> int:
@@ -45,6 +56,20 @@ class ScanResult:
     image_path: str
     image_size: int
     candidates: List[Candidate]
+
+    @property
+    def recovered(self) -> List[Candidate]:
+        """Files we actually report: not a duplicate, not embedded in another."""
+        return [c for c in self.candidates
+                if c.duplicate_of is None and c.embedded_in is None]
+
+    @property
+    def duplicates(self) -> List[Candidate]:
+        return [c for c in self.candidates if c.duplicate_of is not None]
+
+    @property
+    def embedded(self) -> List[Candidate]:
+        return [c for c in self.candidates if c.embedded_in is not None]
 
 
 # --------------------------------------------------------------------------
@@ -188,4 +213,12 @@ def scan(image, formats: Optional[List[str]] = None) -> ScanResult:
             candidates.append(Candidate(key, s, e, note))
 
     candidates.sort(key=lambda c: c.start)
+
+    # ---- Phase 2 post-processing passes ---------------------------------
+    # Each is owned by a separate task (see TASKS.md) and is a no-op until
+    # implemented. Order: score confidence, resolve containment, then dedup.
+    assign_confidence(candidates, buf)     # Task 1  -> c.confidence
+    resolve_containment(candidates)        # Task 3  -> c.embedded_in
+    deduplicate(candidates, buf)           # Task 2  -> c.sha256, c.duplicate_of
+
     return ScanResult(image.path, len(buf), candidates)

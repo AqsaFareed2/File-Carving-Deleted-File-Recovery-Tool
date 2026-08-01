@@ -37,11 +37,16 @@ def _parse_formats(value: str):
     return keys
 
 
-def _write_files(result, out_dir):
+def _write_files(result, out_dir, include_embedded=False, include_duplicates=False):
     os.makedirs(out_dir, exist_ok=True)
+    targets = list(result.recovered)
+    if include_duplicates:
+        targets += result.duplicates
+    if include_embedded:
+        targets += result.embedded
     written = 0
     with open(result.image_path, "rb") as img:
-        for i, c in enumerate(result.candidates, 1):
+        for i, c in enumerate(targets, 1):
             name = f"{i:04d}_{c.fmt}_{c.start:x}.{c.ext}"
             img.seek(c.start)
             with open(os.path.join(out_dir, name), "wb") as fh:
@@ -52,23 +57,27 @@ def _write_files(result, out_dir):
 
 def _summary(result) -> str:
     L = []
-    L.append("=" * 66)
-    L.append("  FILE CARVING SUMMARY (Phase 1)")
-    L.append("=" * 66)
+    L.append("=" * 72)
+    L.append("  FILE CARVING SUMMARY (Phase 2)")
+    L.append("=" * 72)
     L.append(f"  Image      : {result.image_path}")
     L.append(f"  Image size : {_human(result.image_size)} "
              f"({result.image_size:,} bytes)")
-    L.append(f"  Carved     : {len(result.candidates)} file(s)")
-    L.append("-" * 66)
-    if result.candidates:
-        L.append(f"  {'#':>3}  {'TYPE':<5} {'OFFSET':>12} {'SIZE':>10}  FILE")
-        for i, c in enumerate(result.candidates, 1):
+    L.append(f"  Recovered  : {len(result.recovered)} file(s)")
+    L.append(f"  Duplicates : {len(result.duplicates)} (identical SHA-256)")
+    L.append(f"  Embedded   : {len(result.embedded)} (inside other files)")
+    L.append("-" * 72)
+    if result.recovered:
+        L.append(f"  {'#':>3}  {'TYPE':<5} {'OFFSET':>12} {'SIZE':>10} "
+                 f"{'CONF':<8} FILE")
+        for i, c in enumerate(result.recovered, 1):
             L.append(f"  {i:>3}  {c.fmt:<5} {c.start:>#12x} "
-                     f"{_human(c.size):>10}  {i:04d}_{c.fmt}_{c.start:x}.{c.ext}"
-                     + (f"   [{c.note}]" if c.note else ""))
+                     f"{_human(c.size):>10} {c.confidence:<8} "
+                     f"{i:04d}_{c.fmt}_{c.start:x}.{c.ext}"
+                     + (f"  [{c.note}]" if c.note else ""))
     else:
-        L.append("  No files carved.")
-    L.append("=" * 66)
+        L.append("  No files recovered.")
+    L.append("=" * 72)
     return "\n".join(L)
 
 
@@ -81,7 +90,11 @@ def cmd_scan(args):
         sys.stderr.write(f"error: {exc}\n")
         return 2
 
-    written = _write_files(result, args.output) if args.output else 0
+    written = 0
+    if args.output:
+        written = _write_files(result, args.output,
+                               include_embedded=args.include_embedded,
+                               include_duplicates=args.include_duplicates)
     print(_summary(result))
     if args.output:
         print(f"\n  Exported {written} file(s) to: {os.path.abspath(args.output)}")
@@ -105,6 +118,10 @@ def build_parser():
     s.add_argument("--formats", type=_parse_formats, metavar="LIST",
                    help="comma-separated subset: jpg,png,pdf,zip "
                         "(default: all; docx/xlsx/pptx come from zip)")
+    s.add_argument("--include-embedded", action="store_true",
+                   help="also export objects found inside other files")
+    s.add_argument("--include-duplicates", action="store_true",
+                   help="also export files whose SHA-256 already appeared")
     s.set_defaults(func=cmd_scan)
     return p
 
