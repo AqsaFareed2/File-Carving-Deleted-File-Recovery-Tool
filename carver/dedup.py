@@ -2,7 +2,6 @@
 Phase 2 - Task 2: De-duplication by SHA-256.
 
 Owner:  <assign a teammate>
-Branch: feature/dedup
 Tests:  tests/test_dedup.py   (currently RED -- make them pass)
 
 --------------------------------------------------------------------------

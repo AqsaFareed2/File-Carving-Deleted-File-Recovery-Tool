@@ -2,7 +2,6 @@
 Phase 2 - Task 3: Containment / embedded-object resolution.
 
 Owner:  <assign a teammate>
-Branch: feature/containment
 Tests:  tests/test_containment.py   (currently RED -- make them pass)
 
 --------------------------------------------------------------------------

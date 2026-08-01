@@ -3,7 +3,7 @@
 Phase 2 turns the raw Phase 1 candidates into **trustworthy, ranked results**.
 It is split into **three independent tasks**. The shared plumbing (the new
 `Candidate` fields, the call sites in `engine.py`, and the CLI display) is
-already in place on this branch, so **each task only edits one module and one
+already in place on `main`, so **each task only edits one module and one
 test file** — the three pull requests will not conflict.
 
 ## How the pieces fit together
@@ -22,11 +22,11 @@ the fields `confidence`, `sha256`, `duplicate_of`, `embedded_in`, and
 `ScanResult` already exposes `.recovered`, `.duplicates`, `.embedded`, which the
 CLI uses. **Do not edit `engine.py` or `cli.py`** — just fill in your module.
 
-| # | Task | Edit only | Branch |
-|---|------|-----------|--------|
-| 1 | Validation & confidence scoring | `carver/validation.py`, `tests/test_validation.py` | `feature/validation` |
-| 2 | De-duplication by SHA-256 | `carver/dedup.py`, `tests/test_dedup.py` | `feature/dedup` |
-| 3 | Containment / embedded objects | `carver/containment.py`, `tests/test_containment.py` | `feature/containment` |
+| # | Task | Edit only |
+|---|------|-----------|
+| 1 | Validation & confidence scoring | `carver/validation.py`, `tests/test_validation.py` |
+| 2 | De-duplication by SHA-256 | `carver/dedup.py`, `tests/test_dedup.py` |
+| 3 | Containment / embedded objects | `carver/containment.py`, `tests/test_containment.py` |
 
 The full brief for each task is in the docstring at the top of its module.
 
@@ -52,16 +52,15 @@ passes.
 git clone https://github.com/<you>/File-Carving-Deleted-File-Recovery-Tool
 cd File-Carving-Deleted-File-Recovery-Tool
 
-# 2. Branch for your task:
-git checkout -b feature/<task>
+# 2. Implement your carver/<module>.py until your test is green:
+python tests/test_<task>.py     # <task> = validation | dedup | containment
 
-# 3. Implement carver/<module>.py until your test is green:
-python tests/test_<task>.py
-
-# 4. Commit and push to your fork, then open a PR against the main repo:
+# 3. Commit and push to your fork:
 git commit -am "Phase 2: <task>"
-git push origin feature/<task>
+git push
 ```
+
+Then **open a Pull Request** from your fork to this repo's `main` branch.
 
 Before opening the PR, make sure the whole suite still passes:
 

@@ -2,7 +2,6 @@
 Phase 2 - Task 1: Validation & Confidence Scoring.
 
 Owner:  <assign a teammate>
-Branch: feature/validation
 Tests:  tests/test_validation.py   (currently RED -- make them pass)
 
 --------------------------------------------------------------------------
