@@ -42,11 +42,36 @@ sha256 as the file at 0x80000 and duplicate_of == 0x80000; the file at
 """
 
 
+import hashlib
+
 def deduplicate(candidates, buf) -> None:
     """Set ``c.sha256`` for every candidate and mark repeats with
     ``c.duplicate_of`` (in place).
-
-    TODO(Task 2): implement hashing + duplicate detection. This stub is a
-    no-op, so every candidate keeps sha256 == "" and duplicate_of == None.
     """
+    # Process candidates in offset order so "first copy" is deterministic.
+    candidates.sort(key=lambda c: c.start)
+
+    seen_hashes = {}
+
+    for c in candidates:
+        # Hash large files in chunks to avoid copying the whole thing at once
+        h = hashlib.sha256()
+        pos = c.start
+        while pos < c.end:
+            # 1 << 20 is 1MB chunks
+            chunk = bytes(buf[pos:min(pos + (1 << 20), c.end)])
+            h.update(chunk)
+            pos += len(chunk)
+            
+        c.sha256 = h.hexdigest()
+
+        # Check for duplicates
+        if c.sha256 in seen_hashes:
+            # Mark the later one as a duplicate of the first
+            c.duplicate_of = seen_hashes[c.sha256]
+        else:
+            # First time seeing this hash, save the offset
+            seen_hashes[c.sha256] = c.start
+            c.duplicate_of = None
+
     return
