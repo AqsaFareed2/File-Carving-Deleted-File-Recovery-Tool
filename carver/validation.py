@@ -1,49 +1,5 @@
-"""
-Phase 2 - Task 1: Validation & Confidence Scoring.
-
-Owner:  <assign a teammate>
-Tests:  tests/test_validation.py   (currently RED -- make them pass)
-
---------------------------------------------------------------------------
-WHAT TO DO
---------------------------------------------------------------------------
-Implement ``assign_confidence(candidates, buf)`` so that every carved candidate
-gets a ``.confidence`` of "high", "medium" or "low", based on how well its bytes
-validate against the format's own structure. This pass also delivers the project
-scope item "handle fragmentation gracefully": a truncated or footer-less file
-must come out as "low" rather than being silently trusted.
-
-You only edit THIS file and tests/test_validation.py. Do not touch engine.py or
-cli.py -- the Candidate fields and the call site already exist.
-
-Each candidate ``c`` has: c.fmt, c.start, c.end, c.size, c.note, and the field
-you set here, c.confidence. Read the carved bytes with:
-
-    data = bytes(buf[c.start:c.end])
-
-Suggested rules (refine as you like, but keep three levels):
-
-  PNG   chunk structure walks cleanly to IEND ................ high
-        walk broke before IEND (truncated) .................. low
-  JPG   starts FF D8 FF, ends FF D9, has APP0/APP1/DQT marker  high
-        header + FF D9 only, no JFIF/EXIF/DQT ............... medium
-        no FF D9 (see c.note) .............................. low
-  PDF   %PDF ... %%EOF and contains 'startxref'/'xref' ...... high
-        %PDF ... %%EOF but no xref ......................... medium
-        no %%EOF (see c.note) .............................. low
-  ZIP/DOCX/XLSX/PPTX
-        zipfile opens and testzip() passes ................. high
-        opens but a CRC fails (partial) .................... medium
-        will not open ...................................... low
-
-You may also append a short explanation to c.note.
-
---------------------------------------------------------------------------
-ACCEPTANCE (tests/test_validation.py)
---------------------------------------------------------------------------
-On the synthetic test image the five clean files (png/jpg/pdf/zip/docx) are
-"high" and the truncated PNG at offset 0x3c0000 is "low".
-"""
+import io
+import zipfile
 
 # NOTE: do not `import` Candidate from engine (that would be circular). The
 # candidates are passed in; treat them by their attributes.
@@ -53,12 +9,86 @@ MEDIUM = "medium"
 LOW = "low"
 
 
-def assign_confidence(candidates, buf) -> None:
-    """Set ``c.confidence`` for every candidate in ``candidates`` (in place).
+def _validate_png(data):
+    if not data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return LOW
 
-    ``buf`` is the searchable image buffer (supports slicing and len()).
+    pos = 8
+    while pos + 12 <= len(data):
+        length = int.from_bytes(data[pos:pos + 4], "big")
+        chunk = data[pos + 4:pos + 8]
+        nxt = pos + 12 + length
 
-    TODO(Task 1): implement per-format validation. This stub is a no-op, so
-    every candidate keeps its default confidence of "unknown".
+        if nxt > len(data):
+            return LOW
+
+        if chunk == b"IEND":
+            return HIGH
+
+        pos = nxt
+
+    return LOW
+
+
+def _validate_jpg(data):
+    if not data.startswith(b"\xff\xd8\xff"):
+        return LOW
+
+    if not data.endswith(b"\xff\xd9"):
+        return LOW
+
+    if b"JFIF" in data or b"Exif" in data or b"\xff\xdb" in data:
+        return HIGH
+
+    return MEDIUM
+
+
+def _validate_pdf(data):
+    if not data.startswith(b"%PDF"):
+        return LOW
+
+    if b"%%EOF" not in data:
+        return LOW
+
+    if b"xref" in data or b"startxref" in data:
+        return HIGH
+
+    return MEDIUM
+
+
+def _validate_zip(data):
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(data))
+
+        if zf.testzip() is None:
+            return HIGH
+
+        return MEDIUM
+
+    except Exception:
+        return LOW
+
+
+def assign_confidence(candidates, buf):
     """
-    return
+    Set confidence for every carved candidate.
+    """
+
+    for c in candidates:
+
+        data = bytes(buf[c.start:c.end])
+
+        if c.fmt == "png":
+            c.confidence = _validate_png(data)
+
+        elif c.fmt == "jpg":
+            c.confidence = _validate_jpg(data)
+
+        elif c.fmt == "pdf":
+            c.confidence = _validate_pdf(data)
+
+        elif c.fmt in ("zip", "docx", "xlsx", "pptx"):
+            c.confidence = _validate_zip(data)
+
+        else:
+            c.confidence = LOW
