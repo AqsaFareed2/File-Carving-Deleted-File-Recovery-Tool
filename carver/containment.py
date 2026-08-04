@@ -44,7 +44,27 @@ def resolve_containment(candidates) -> None:
     """Flag candidates contained within a larger candidate by setting
     ``c.embedded_in`` (in place).
 
-    TODO(Task 3): implement containment detection. This stub is a no-op, so
-    every candidate keeps embedded_in == None.
+    A candidate ``inner`` is embedded when some other candidate ``outer`` fully
+    covers its byte range and is strictly larger:
+
+        outer.start <= inner.start  and  inner.end <= outer.end
+        and outer.size > inner.size
+
+    When several candidates contain ``inner`` (nesting), we record the
+    outermost one -- the largest container -- so the field points at the
+    top-level file. A standalone file keeps ``embedded_in = None``.
     """
-    return
+    for inner in candidates:
+        container_start = None
+        container_size = -1
+        for outer in candidates:
+            if outer is inner:
+                continue
+            if (outer.start <= inner.start and inner.end <= outer.end
+                    and outer.size > inner.size):
+                # keep the largest (outermost) container
+                if outer.size > container_size:
+                    container_size = outer.size
+                    container_start = outer.start
+        if container_start is not None:
+            inner.embedded_in = container_start
