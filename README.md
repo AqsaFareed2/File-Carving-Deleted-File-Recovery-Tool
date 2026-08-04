@@ -1,24 +1,44 @@
-# Carver — Phase 1: Core Carving Engine
+# Carver — File Carving & Deleted-File Recovery Tool
 
-Phase 1 of the **File Carving & Deleted-File Recovery Tool**. This folder is a
-self-contained implementation of just the first phase: read a disk image
-without a file system, scan it for known file signatures, carve each candidate
-file, and report its **byte offset and size**.
+A Python tool that recovers files from a raw or E01 disk image by scanning for
+their **signatures** (headers/footers), without relying on the file system.
+When a file is deleted, the file-table entry is unlinked but the data usually
+survives on disk until it is overwritten — file carving reconstructs those files
+straight from the raw bytes.
 
-> Later phases (validation & confidence scoring, fragmentation handling,
-> de-duplication by hash, rich reports, GUI, and live drive acquisition) are
-> **not** part of this folder — they build on top of this engine.
+**Forensic domain:** disk forensics · **Deliverable:** command-line tool / utility
 
-## Scope of Phase 1
+## Project status
 
-- Read a **raw** (`.dd` / `.img` / `.raw`) or **E01** (EnCase) disk image,
-  independently of any file system.
-- Scan the whole image for the header signatures of **JPG, PNG, PDF, ZIP** and
-  **DOCX**.
-- Determine each file's true end (format-aware) and **carve + export** it,
-  reporting **offset and size**.
+| Phase | Scope | Status |
+|-------|-------|--------|
+| 1 | Read raw/E01 image, scan signatures (JPG/PNG/PDF/ZIP/DOCX), carve + report offset & size | ✅ done |
+| 2 | Validation & confidence, fragmentation handling, de-duplication, containment | ✅ done |
+| 3 | Reporting & verification (console / JSON / HTML) | planned |
+| 4 | Desktop GUI + live drive acquisition | planned |
 
-## How it works
+Phase 2 was built collaboratively as three independent parallel tasks — see
+[`TASKS.md`](TASKS.md).
+
+## Features
+
+**Phase 1 — carving engine**
+- Reads **raw** (`.dd` / `.img` / `.raw`) and **E01** (EnCase) images, independent
+  of any file system (raw images are memory-mapped so large images stream).
+- Scans for the header signatures of **JPG, PNG, PDF, ZIP** and **DOCX**.
+- Determines each file's true end (format-aware) and **carves + exports** it,
+  reporting its **byte offset and size**.
+
+**Phase 2 — accuracy & resilience**
+- **Confidence scoring** — every carved file is rated `high` / `medium` / `low`
+  by validating its bytes against the format structure. This also handles
+  **fragmentation/truncation gracefully**: incomplete files come out `low`.
+- **De-duplication** — identical files are detected by **SHA-256** and the
+  duplicates are dropped from the results.
+- **Containment resolution** — objects stored **inside** another file (e.g. a
+  JPEG inside a PDF/DOCX) are flagged as embedded and not reported as standalone.
+
+## How signature carving works
 
 | Format | Header (hex) | How the end is found |
 |--------|--------------|----------------------|
@@ -29,8 +49,16 @@ file, and report its **byte offset and size**.
 | DOCX   | `50 4B 03 04` (a ZIP) | detected by `word/document.xml` inside |
 
 The ZIP pass runs first and records each archive's byte range so the many
-internal `PK\x03\x04` headers (and any media) inside an archive are not
-mistaken for separate files.
+internal `PK\x03\x04` headers (and any media) inside an archive are not mistaken
+for separate files.
+
+### Confidence levels (Phase 2)
+
+| Level | Meaning |
+|-------|---------|
+| high | Structure fully validates — PNG walks to `IEND`, JPEG has JFIF/EXIF markers + `FF D9`, PDF has an xref + `%%EOF`, ZIP/DOCX opens and passes its integrity check. |
+| medium | Header and footer present, but validation is inconclusive. |
+| low | Header found but no clean end — **truncated or fragmented**. |
 
 ## Requirements
 
@@ -45,7 +73,7 @@ mistaken for separate files.
 # 1. (optional) build a synthetic test image with known contents
 python make_test_image.py test_image.dd --size-mb 8
 
-# 2. scan it and export the carved files
+# 2. scan it and export the recovered files
 python -m carver scan test_image.dd -o recovered/
 ```
 
@@ -53,13 +81,38 @@ Options:
 
 ```
 python -m carver scan IMAGE [-o DIR] [--formats jpg,png,pdf,zip]
+                            [--include-embedded] [--include-duplicates]
 ```
 
-- `-o DIR`        write carved files here (omit to only print the summary)
-- `--formats`     restrict the search; `docx` comes from `zip`
+- `-o DIR`               write recovered files here (omit to only print the summary)
+- `--formats`            restrict the search; `docx` comes from `zip`
+- `--include-embedded`   also export objects found inside other files
+- `--include-duplicates` also export files whose SHA-256 already appeared
 
 Carved files are named `NNNN_<type>_<offset-hex>.<ext>` (e.g.
 `0003_pdf_120000.pdf`) so the filename records where the data was found.
+
+### Example output
+
+```
+========================================================================
+  FILE CARVING SUMMARY (Phase 2)
+========================================================================
+  Image      : test_image.dd
+  Image size : 8.0 MB (8,388,608 bytes)
+  Recovered  : 6 file(s)
+  Duplicates : 1 (identical SHA-256)
+  Embedded   : 0 (inside other files)
+------------------------------------------------------------------------
+    #  TYPE        OFFSET       SIZE CONF     FILE
+    1  png         0x1000       69 B high     0001_png_1000.png
+    2  jpg        0x80000      160 B high     0002_jpg_80000.jpg
+    3  pdf       0x120000      456 B high     0003_pdf_120000.pdf
+    4  zip       0x1c0000      312 B high     0004_zip_1c0000.zip
+    5  docx      0x260000      912 B high     0005_docx_260000.docx
+    6  png       0x3c0000       33 B low      0006_png_3c0000.png  [no IEND chunk]
+========================================================================
+```
 
 ## Project layout
 
@@ -68,21 +121,28 @@ carver/
   __init__.py       package exports
   signatures.py     the signature catalogue (headers/footers/limits)
   image_reader.py   raw (mmap) and E01 (pyewf) image access
-  engine.py         header scanning, format-aware carving, offset/size
+  engine.py         header scanning, carving, and the Phase 2 hook calls
+  validation.py     Phase 2 · confidence scoring            (Task A)
+  dedup.py          Phase 2 · SHA-256 de-duplication         (Task B)
+  containment.py    Phase 2 · embedded-object resolution     (Task C)
   cli.py            the `python -m carver scan` command line
   __main__.py       entry point
 make_test_image.py  builds a synthetic image with known ground truth
-tests/test_phase1.py  end-to-end test (carve the test image, check results)
+tests/
+  test_phase1.py        carving: exact offsets/sizes, DOCX classification
+  test_validation.py    Task A: confidence levels
+  test_dedup.py         Task B: SHA-256 duplicate detection
+  test_containment.py   Task C: embedded-object flagging
+TASKS.md            Phase 2 task assignments and contribution workflow
 ```
 
 ## Testing
 
 ```bash
-python tests/test_phase1.py      # or:  python -m pytest -q
+python -m pytest -q      # or run each tests/test_*.py file directly
 ```
 
-The test builds the synthetic image and asserts that the five target files are
-carved at their exact offset and size, that the DOCX is classified from its ZIP
-container, and that Phase 1 reports raw candidates (the duplicate and truncated
-files both appear — de-duplication and fragmentation handling come later).
-```
+The suite (10 tests) builds the synthetic image and checks that the five target
+files are carved at their exact offset and size, that clean files are rated
+`high` and a truncated file `low`, that a duplicate file is detected by hash and
+dropped, and that a file embedded inside another is flagged as contained.
