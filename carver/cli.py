@@ -98,6 +98,14 @@ def cmd_scan(args):
     print(_summary(result))
     if args.output:
         print(f"\n  Exported {written} file(s) to: {os.path.abspath(args.output)}")
+
+    # Phase 3 reports (each format is rendered by its own module).
+    from . import report as report_mod
+    for kind, path in (("json", args.json), ("html", args.html), ("csv", args.csv)):
+        if path:
+            report_mod.write_report(result, kind, path)
+            print(f"  {kind.upper():<5} report: {os.path.abspath(path)}")
+
     print(f"  Scan time  : {time.time() - t0:.2f}s")
     return 0
 
@@ -122,6 +130,9 @@ def build_parser():
                    help="also export objects found inside other files")
     s.add_argument("--include-duplicates", action="store_true",
                    help="also export files whose SHA-256 already appeared")
+    s.add_argument("--json", metavar="FILE", help="write a JSON report")
+    s.add_argument("--html", metavar="FILE", help="write an HTML report")
+    s.add_argument("--csv", metavar="FILE", help="write a CSV evidence log")
     s.set_defaults(func=cmd_scan)
     return p
 
