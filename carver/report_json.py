@@ -37,10 +37,16 @@ input data (one entry per recovered file, each with a 64-char sha256).
 """
 
 
-def write_json(data: dict, path: str) -> None:
-    """Write ``data`` to ``path`` as JSON.
+import json
 
-    TODO(Task A): implement. This stub is a no-op (writes nothing), so the
-    acceptance test fails until you implement it.
+
+def write_json(data: dict, path: str) -> None:
+    """Write ``data`` to ``path`` as pretty-printed UTF-8 JSON.
+
+    ``data`` is already made of plain built-in types (from
+    ``carver.report.report_data``), so it serialises directly. The whole
+    structure is preserved: image details, summary counts, and the file lists.
     """
-    return
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2, ensure_ascii=False)
+        fh.write("\n")
