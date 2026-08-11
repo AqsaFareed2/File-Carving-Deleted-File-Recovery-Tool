@@ -25,7 +25,7 @@ def write_csv(data: dict, path: str) -> None:
         for index, file_data in enumerate(data["files"], start=1):
             writer.writerow([
                 index,
-                file_data.get("type", ""),
+                file_data.get("format", ""),
                 file_data.get("offset_hex", ""),
                 file_data.get("size", ""),
                 file_data.get("confidence", ""),

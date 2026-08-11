@@ -40,11 +40,13 @@ def write_html(data: dict, path: str) -> None:
     """
     
     # Safely extract header/summary information
-    image_path = html.escape(str(data.get('image_path', 'N/A')))
-    image_size = html.escape(str(data.get('image_size', '0')))
-    recovered = str(data.get('recovered', len(data.get('files', []))))
-    duplicates = str(data.get('duplicates', '0'))
-    embedded = str(data.get('embedded', '0'))
+    image = data.get('image', {})
+    summary = data.get('summary', {})
+    image_path = html.escape(str(image.get('path', 'N/A')))
+    image_size = html.escape(str(image.get('size', '0')))
+    recovered = str(summary.get('recovered', len(data.get('files', []))))
+    duplicates = str(summary.get('duplicates', 0))
+    embedded = str(summary.get('embedded', 0))
 
     # Start building the HTML content with internal CSS
     html_content = f"""<!DOCTYPE html>
@@ -97,13 +99,13 @@ def write_html(data: dict, path: str) -> None:
 
     # Loop through each recovered file
     for f in data.get('files', []):
-        f_num = html.escape(str(f.get('number', '')))
-        f_type = html.escape(str(f.get('type', '')))
-        
+        f_num = html.escape(str(f.get('index', '')))
+        f_type = html.escape(str(f.get('format', '')))
+
         # Checking for 'offset_hex' as required by the test
         f_offset = html.escape(str(f.get('offset_hex', f.get('offset', ''))))
         f_size = html.escape(str(f.get('size', '')))
-        f_notes = html.escape(str(f.get('notes', '')))
+        f_notes = html.escape(str(f.get('note', '')))
         
         # Get short prefix of SHA-256
         full_sha = str(f.get('sha256', ''))
