@@ -14,10 +14,10 @@ straight from the raw bytes.
 |-------|-------|--------|
 | 1 | Read raw/E01 image, scan signatures (JPG/PNG/PDF/ZIP/DOCX), carve + report offset & size | ✅ done |
 | 2 | Validation & confidence, fragmentation handling, de-duplication, containment | ✅ done |
-| 3 | Reporting & verification (console / JSON / HTML) | planned |
+| 3 | Reporting — console + JSON + HTML + CSV | ✅ done |
 | 4 | Desktop GUI + live drive acquisition | planned |
 
-Phase 2 was built collaboratively as three independent parallel tasks — see
+Phases 2 and 3 were built collaboratively as independent parallel tasks — see
 [`TASKS.md`](TASKS.md).
 
 ## Features
@@ -37,6 +37,11 @@ Phase 2 was built collaboratively as three independent parallel tasks — see
   duplicates are dropped from the results.
 - **Containment resolution** — objects stored **inside** another file (e.g. a
   JPEG inside a PDF/DOCX) are flagged as embedded and not reported as standalone.
+
+**Phase 3 — reporting**
+- A single canonical summary (`carver/report.py`) is rendered to three formats:
+  a **JSON** report (machine-readable), a self-contained **HTML** report with a
+  colour-coded confidence table, and a **CSV** evidence log (one row per file).
 
 ## How signature carving works
 
@@ -73,8 +78,8 @@ for separate files.
 # 1. (optional) build a synthetic test image with known contents
 python make_test_image.py test_image.dd --size-mb 8
 
-# 2. scan it and export the recovered files
-python -m carver scan test_image.dd -o recovered/
+# 2. scan it, export the recovered files, and write reports
+python -m carver scan test_image.dd -o recovered/ --json report.json --html report.html --csv report.csv
 ```
 
 Options:
@@ -82,12 +87,14 @@ Options:
 ```
 python -m carver scan IMAGE [-o DIR] [--formats jpg,png,pdf,zip]
                             [--include-embedded] [--include-duplicates]
+                            [--json FILE] [--html FILE] [--csv FILE]
 ```
 
 - `-o DIR`               write recovered files here (omit to only print the summary)
 - `--formats`            restrict the search; `docx` comes from `zip`
 - `--include-embedded`   also export objects found inside other files
 - `--include-duplicates` also export files whose SHA-256 already appeared
+- `--json` / `--html` / `--csv`  write a report in that format (Phase 3)
 
 Carved files are named `NNNN_<type>_<offset-hex>.<ext>` (e.g.
 `0003_pdf_120000.pdf`) so the filename records where the data was found.
@@ -122,18 +129,25 @@ carver/
   signatures.py     the signature catalogue (headers/footers/limits)
   image_reader.py   raw (mmap) and E01 (pyewf) image access
   engine.py         header scanning, carving, and the Phase 2 hook calls
-  validation.py     Phase 2 · confidence scoring            (Task A)
-  dedup.py          Phase 2 · SHA-256 de-duplication         (Task B)
-  containment.py    Phase 2 · embedded-object resolution     (Task C)
+  validation.py     Phase 2 · confidence scoring
+  dedup.py          Phase 2 · SHA-256 de-duplication
+  containment.py    Phase 2 · embedded-object resolution
+  report.py         Phase 3 · canonical report data + dispatcher
+  report_json.py    Phase 3 · JSON report
+  report_html.py    Phase 3 · HTML report
+  report_csv.py     Phase 3 · CSV evidence log
   cli.py            the `python -m carver scan` command line
   __main__.py       entry point
 make_test_image.py  builds a synthetic image with known ground truth
 tests/
   test_phase1.py        carving: exact offsets/sizes, DOCX classification
-  test_validation.py    Task A: confidence levels
-  test_dedup.py         Task B: SHA-256 duplicate detection
-  test_containment.py   Task C: embedded-object flagging
-TASKS.md            Phase 2 task assignments and contribution workflow
+  test_validation.py    confidence levels
+  test_dedup.py         SHA-256 duplicate detection
+  test_containment.py   embedded-object flagging
+  test_report_json.py   JSON report
+  test_report_html.py   HTML report
+  test_report_csv.py    CSV evidence log
+TASKS.md            current-phase task assignments and contribution workflow
 ```
 
 ## Testing
@@ -142,7 +156,8 @@ TASKS.md            Phase 2 task assignments and contribution workflow
 python -m pytest -q      # or run each tests/test_*.py file directly
 ```
 
-The suite (10 tests) builds the synthetic image and checks that the five target
+The suite (13 tests) builds the synthetic image and checks that the five target
 files are carved at their exact offset and size, that clean files are rated
 `high` and a truncated file `low`, that a duplicate file is detected by hash and
-dropped, and that a file embedded inside another is flagged as contained.
+dropped, that a file embedded inside another is flagged as contained, and that
+the JSON, HTML and CSV reports are generated correctly.
