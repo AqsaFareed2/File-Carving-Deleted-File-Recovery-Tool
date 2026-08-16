@@ -10,7 +10,7 @@ scoring (carver/validation.py), de-duplication by SHA-256 (carver/dedup.py) and
 containment/embedded-object resolution (carver/containment.py). See TASKS.md.
 """
 
-__version__ = "3.0.0-phase3.dev"
+__version__ = "4.0.0-phase4.dev"
 
 from .engine import scan, Candidate, ScanResult
 from .image_reader import DiskImage
