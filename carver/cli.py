@@ -110,6 +110,11 @@ def cmd_scan(args):
     return 0
 
 
+def cmd_gui(args):
+    from .gui.app import launch
+    return launch([args.image] if args.image else None)
+
+
 def build_parser():
     p = argparse.ArgumentParser(
         prog="carver",
@@ -134,6 +139,10 @@ def build_parser():
     s.add_argument("--html", metavar="FILE", help="write an HTML report")
     s.add_argument("--csv", metavar="FILE", help="write a CSV evidence log")
     s.set_defaults(func=cmd_scan)
+
+    g = sub.add_parser("gui", help="launch the desktop GUI (Phase 4)")
+    g.add_argument("image", nargs="?", help="optionally pre-load an image path")
+    g.set_defaults(func=cmd_gui)
     return p
 
 
